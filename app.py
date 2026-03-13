@@ -32,6 +32,26 @@ audio = mic_recorder(start_prompt="Record Start", stop_prompt="Stop & Process", 
 
 if audio:
     audio_bio = io.BytesIO(audio['bytes'])
+    from pydub import AudioSegment # Ye upar import mein jodd dena
+
+# --- VOICE LOGIC WALA HISSA ---
+if audio:
+    # Awaaz ko WAV format mein convert karna
+    audio_bio = io.BytesIO(audio['bytes'])
+    audio_segment = AudioSegment.from_file(audio_bio)
+    
+    # Export as WAV for Google Speech Recognition
+    wav_io = io.BytesIO()
+    audio_segment.export(wav_io, format="wav")
+    wav_io.seek(0)
+    
+    r = sr.Recognizer()
+    with sr.AudioFile(wav_io) as source:
+        audio_data = r.record(source)
+        try:
+            text = r.recognize_google(audio_data, language='hi-IN')
+            st.info(f"🎤 Aapne kaha: {text}")
+            # ... baaki ka splitting logic ...
     r = sr.Recognizer()
     with sr.AudioFile(audio_bio) as source:
         audio_data = r.record(source)
