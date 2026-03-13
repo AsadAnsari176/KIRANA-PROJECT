@@ -1,0 +1,6 @@
+streamlit
+pandas
+SpeechRecognition
+openpyxl
+streamlit-mic-recorder
+
