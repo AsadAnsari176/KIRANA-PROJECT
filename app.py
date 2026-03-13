@@ -15,46 +15,31 @@ if not os.path.exists(file_name):
 else:
     df = pd.read_excel(file_name)
 
-# --- 2. UI DESIGN ---
+# --- 2. UI ---
 st.set_page_config(page_title="Jabalpur Kirana AI", layout="wide")
-st.title("🛒 Jabalpur Kirana: Smart Billing & Stock")
+st.title("🛒 Jabalpur Kirana: Smart Billing")
 
-# Sidebar
 st.sidebar.header("📦 Live Stock")
 st.sidebar.dataframe(df)
 
-# --- 3. VOICE LOGIC (Web Version) ---
+# --- 3. MIC LOGIC ---
 st.subheader("New Bill Entry")
-col1, col2 = st.columns(2)
+# Ye button ab aapke mobile ka mic use karega
+audio = mic_recorder(start_prompt="🎤 Record Start", stop_prompt="🛑 Stop", key='recorder')
 
-with col1:
-    st.write("🎤 Mic Button Dabayein aur Bolein:")
-    # Naya Browser Mic
-    audio = mic_recorder(start_prompt="Record Start", stop_prompt="Stop & Process", key='recorder')
-    
-    # Jab record ho jaye toh ye chalega
-    if audio:
-        st.audio(audio['bytes'])
-        st.info("Bhai, awaaz record ho gayi! (Abhi main ise text mein badalne wala logic update kar raha hoon...)")
+if audio:
+    st.audio(audio['bytes'])
+    st.success("Awaaz record ho gayi! Abhi text conversion baaki hai.")
 
-    cust_name = st.text_input("Customer Name", value="Asad")
-    item_select = st.selectbox("Select Item", df['Item'])
+# Manual Entry (Jab tak voice fully connect na ho)
+cust_name = st.text_input("Customer Name", value="Asad")
+item_select = st.selectbox("Select Item", df['Item'])
+qty = st.number_input("Quantity", min_value=1, value=1)
 
-with col2:
-    qty = st.number_input("Quantity", min_value=1, value=1)
-    rate = df[df['Item'] == item_select]['Rate'].values[0]
-    stock = df[df['Item'] == item_select]['Stock'].values[0]
-    st.info(f"Rate: ₹{rate} | Stock available: {stock}")
-
-# --- 4. FINAL BILL ---
+rate = df[df['Item'] == item_select]['Rate'].values[0]
 total = rate * qty
 st.markdown(f"### Total: ₹{total}")
 
-if st.button("Finalize & Print Bill"):
-    if qty <= stock:
-        df.loc[df['Item'] == item_select, 'Stock'] -= qty
-        df.to_excel(file_name, index=False)
-        st.success(f"Bill Done! Total ₹{total} for {cust_name}")
-        st.balloons()
-    else:
-        st.error("Stock nahi hai dukan mein!")
+if st.button("Finalize Bill"):
+    st.balloons()
+    st.success(f"Bill Ban Gaya: ₹{total}")
