@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from streamlit_mic_recorder import mic_recorder
 import speech_recognition as sr
+from pydub import AudioSegment
 import io
 import os
 
@@ -21,71 +22,60 @@ else:
 st.set_page_config(page_title="Kirana AI Jabalpur", layout="wide")
 st.title("🛒 Jabalpur Kirana: Smart Voice Billing")
 
-# Session State for inputs
 if 'cust_name' not in st.session_state: st.session_state['cust_name'] = ""
 if 'qty_input' not in st.session_state: st.session_state['qty_input'] = 1
 if 'item_input' not in st.session_state: st.session_state['item_input'] = "Aata"
 
-# --- 3. VOICE LOGIC ---
+# --- 3. VOICE LOGIC (Final Fixed) ---
 st.subheader("🎤 Voice Entry (Boliye: Name Qty Item)")
 audio = mic_recorder(start_prompt="Record Start", stop_prompt="Stop & Process", key='recorder')
 
 if audio:
-    audio_bio = io.BytesIO(audio['bytes'])
-    from pydub import AudioSegment # Ye upar import mein jodd dena
+    try:
+        # Step A: Convert to WAV
+        audio_bio = io.BytesIO(audio['bytes'])
+        audio_segment = AudioSegment.from_file(audio_bio)
+        wav_io = io.BytesIO()
+        audio_segment.export(wav_io, format="wav")
+        wav_io.seek(0)
 
-# --- VOICE LOGIC WALA HISSA ---
-if audio:
-    # Awaaz ko WAV format mein convert karna
-    audio_bio = io.BytesIO(audio['bytes'])
-    audio_segment = AudioSegment.from_file(audio_bio)
-    
-    # Export as WAV for Google Speech Recognition
-    wav_io = io.BytesIO()
-    audio_segment.export(wav_io, format="wav")
-    wav_io.seek(0)
-    
-    r = sr.Recognizer()
-    with sr.AudioFile(wav_io) as source:
-        audio_data = r.record(source)
-        try:
+        # Step B: Speech to Text
+        r = sr.Recognizer()
+        with sr.AudioFile(wav_io) as source:
+            audio_data = r.record(source)
             text = r.recognize_google(audio_data, language='hi-IN')
             st.info(f"🎤 Aapne kaha: {text}")
-            # ... baaki ka splitting logic ...
-    r = sr.Recognizer()
-    with sr.AudioFile(audio_bio) as source:
-        audio_data = r.record(source)
-        try:
-            text = r.recognize_google(audio_data, language='hi-IN')
-            st.info(f"🎤 Aapne kaha: {text}")
+            
             words = text.split()
             if len(words) >= 3:
                 st.session_state['cust_name'] = words[0]
                 st.session_state['qty_input'] = int(words[1])
                 st.session_state['item_input'] = words[2].capitalize()
-        except:
-            st.error("Awaaz samajh nahi aayi, dobara boliye.")
+    except Exception as e:
+        st.error("Bhai, awaaz saaf nahi thi ya mic ki permission ka chakkar hai. Phir se try karein.")
 
-# --- 4. FORM ---
+# --- 4. BILLING FORM ---
 col1, col2 = st.columns(2)
 with col1:
     customer = st.text_input("Customer Name", value=st.session_state['cust_name'])
-    item_select = st.selectbox("Select Item", df['Item'], index=list(df['Item']).index(st.session_state['item_input']) if st.session_state['item_input'] in list(df['Item']) else 0)
+    items_list = list(df['Item'])
+    default_idx = items_list.index(st.session_state['item_input']) if st.session_state['item_input'] in items_list else 0
+    item_select = st.selectbox("Select Item", items_list, index=default_idx)
 
 with col2:
     qty = st.number_input("Quantity", min_value=1, value=st.session_state['qty_input'])
     rate = df[df['Item'] == item_select]['Rate'].values[0]
-    current_stock = df[df['Item'] == item_select]['Stock'].values[0]
-    st.write(f"**Rate:** ₹{rate} | **Stock:** {current_stock}")
+    stock = df[df['Item'] == item_select]['Stock'].values[0]
+    st.write(f"**Rate:** ₹{rate} | **Stock:** {stock}")
 
 total = rate * qty
 st.markdown(f"## Total: ₹{total}")
 
 if st.button("Finalize Bill"):
-    if qty <= current_stock:
+    if qty <= stock:
         df.loc[df['Item'] == item_select, 'Stock'] -= qty
         df.to_excel(file_name, index=False)
-        st.success(f"Bill Success! ₹{total}")
+        st.success(f"Bill Ban Gaya! Total ₹{total}")
         st.balloons()
     else:
-        st.error("Out of Stock!")
+        st.error("Stock khatam!")
