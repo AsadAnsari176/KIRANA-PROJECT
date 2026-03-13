@@ -1,78 +1,78 @@
 import streamlit as st
 import pandas as pd
-import os
+from streamlit_mic_recorder import mic_recorder
 import speech_recognition as sr
+import io
+import os
 
-def get_voice_input():
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.write("🎤 Sun raha hoon... Boliye!")
-        # Background noise saaf karne ke liye
-        r.adjust_for_ambient_noise(source)
-        audio = r.listen(source)
-        try:
-            # Awaaz ko Google AI se text mein badlo
-            text = r.recognize_google(audio, language='hi-IN') # Hindi/English dono samjhega
-            return text
-        except:
-            return "Awaaz samajh nahi aayi, fir se boliye."
-
-# --- UI mein Mic Button ---
-if st.button("🎤 Bol kar Entry Karein"):
-    voice_text = get_voice_input()
-    st.success(f"Aapne kaha: {voice_text}")
-    # Ab is text se 'Asad' aur 'Aata' nikalne ka kaam shuru hoga
-# --- 1. Database Setup (Excel Check) ---
+# --- 1. SETUP: Inventory Management ---
 file_name = "inventory.xlsx"
-
 if not os.path.exists(file_name):
-    # Agar file nahi hai toh naya banao
-    initial_data = {
+    df = pd.DataFrame({
         'Item': ['Aata', 'Chawal', 'Doodh', 'Shakkar', 'Tel'],
         'Rate': [45, 60, 66, 42, 160],
         'Stock': [100, 50, 20, 80, 30]
-    }
-    pd.DataFrame(initial_data).to_excel(file_name, index=False)
+    })
+    df.to_excel(file_name, index=False)
+else:
+    df = pd.read_excel(file_name)
 
-# Data load karo
-df = pd.read_excel(file_name)
+# --- 2. UI DESIGN ---
+st.set_page_config(page_title="Kirana AI Jabalpur", layout="wide")
+st.title("🛒 Jabalpur Kirana: Smart Voice Billing")
 
-# --- 2. Design ---
-st.set_page_config(page_title="Jabalpur Kirana AI", layout="wide")
-st.title("🛒 Jabalpur Kirana: Smart Billing & Stock")
-
-# --- 3. Sidebar (Stock Display) ---
-st.sidebar.header("📦 Live Stock")
+# Sidebar for Stock
+st.sidebar.header("📦 Current Stock")
 st.sidebar.dataframe(df)
 
-# --- 4. Billing Area ---
-st.subheader("New Bill Entry")
-col1, col2 = st.columns(2)
+# --- 3. VOICE LOGIC ---
+st.subheader("🎤 Voice Entry (Boliye: Name Qty Item)")
+audio = mic_recorder(start_prompt="Record Start", stop_prompt="Stop & Process", key='recorder')
 
+# Session State to hold values
+if 'cust_name' not in st.session_state: st.session_state['cust_name'] = ""
+if 'qty_input' not in st.session_state: st.session_state['qty_input'] = 1
+if 'item_input' not in st.session_state: st.session_state['item_input'] = "Aata"
+
+if audio:
+    audio_bio = io.BytesIO(audio['bytes'])
+    r = sr.Recognizer()
+    with sr.AudioFile(audio_bio) as source:
+        audio_data = r.record(source)
+        try:
+            # Hindi-English mix recognition
+            text = r.recognize_google(audio_data, language='hi-IN')
+            st.info(f"🎤 Aapne kaha: {text}")
+            
+            words = text.split()
+            if len(words) >= 3:
+                st.session_state['cust_name'] = words[0]
+                # Try to handle numbers if spoken in Hindi
+                st.session_state['qty_input'] = int(words[1]) 
+                st.session_state['item_input'] = words[2].capitalize()
+        except:
+            st.error("Awaaz samajh nahi aayi, dobara boliye.")
+
+# --- 4. BILLING FORM ---
+col1, col2 = st.columns(2)
 with col1:
-    customer = st.text_input("Customer Name", placeholder="Asad")
-    item_select = st.selectbox("Select Item", df['Item'])
+    customer = st.text_input("Customer Name", value=st.session_state['cust_name'])
+    item_select = st.selectbox("Select Item", df['Item'], index=list(df['Item']).index(st.session_state['item_input']) if st.session_state['item_input'] in list(df['Item']) else 0)
 
 with col2:
-    qty = st.number_input("Quantity", min_value=1, value=1)
-    # Rate nikalo
+    qty = st.number_input("Quantity", min_value=1, value=st.session_state['qty_input'])
     rate = df[df['Item'] == item_select]['Rate'].values[0]
     current_stock = df[df['Item'] == item_select]['Stock'].values[0]
-    st.info(f"Rate: ₹{rate} | Stock available: {current_stock}")
+    st.write(f"**Rate:** ₹{rate} | **Stock:** {current_stock}")
 
 total = rate * qty
-st.write(f"### Total: ₹{total}")
+st.markdown(f"## Total Amount: **₹{total}**")
 
-# --- 5. Logic: Button click karne par kya hoga? ---
-if st.button("Finalize & Print Bill"):
+if st.button("Finalize & Update Stock"):
     if qty <= current_stock:
-        # 1. Stock minus karo
         df.loc[df['Item'] == item_select, 'Stock'] -= qty
-        # 2. Excel save karo
         df.to_excel(file_name, index=False)
-        
-        st.success(f"Bill Generated for {customer}! Final: ₹{total}")
-        st.balloons() # Ab balloons udne chahiye!
-        st.rerun() # Screen update karega naye stock ke sath
+        st.success(f"Bill Ban Gaya! Total ₹{total}")
+        st.balloons()
     else:
-        st.error("❌ Stock kam hai! Itna maal nahi hai dukan mein.")
+        st.error("Dukan mein itna maal nahi hai!")
