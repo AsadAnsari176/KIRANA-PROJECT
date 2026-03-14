@@ -1,6 +1,9 @@
 streamlit
 pandas
-SpeechRecognition
 openpyxl
+pillow
+fpdf
+qrcode
 streamlit-mic-recorder
+SpeechRecognition
 pydub
